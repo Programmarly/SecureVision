@@ -1,0 +1,6 @@
+# Ignore the data directory inside src
+src/data/
+
+# Ignore all .mp4 and .mpeg files
+*.mp4
+*.mpeg
