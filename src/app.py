@@ -6,6 +6,7 @@ import threading
 import atexit
 from watchdog.observers import Observer
 from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from services.payload_for_register import PayloadForRegister
 from services.folder_monitor import VideoFolderMonitor
@@ -13,11 +14,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from watchdog.observers import Observer
 from fastapi import WebSocket, WebSocketDisconnect
-
+import json
+from pydantic import BaseModel, field_validator, ValidationError
 
 app = FastAPI()
 
 BASE_PATH = "data"  # Centralized base folder path
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 observer = Observer()  # Global observer instance
 websocket_clients = set()  # Track connected WebSocket clients
 
@@ -51,16 +55,34 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @app.post("/upload_data")
-async def upload_data(payload: PayloadForRegister):
-    """API endpoint to register a user, create directories, and start monitoring CCTV feeds."""
-    email = payload.email
-    cctv_names = payload.cctv_names  # Now a list of strings
+async def upload_data(
+    email: str = Form(...),
+    cctv_names: str = Form(...),
+    file: UploadFile = File(...)
+):
+    # Parse cctv_names JSON string to list
+    try:
+        cctv_names_list = json.loads(cctv_names)
+    except json.JSONDecodeError:
+        return JSONResponse(content={"error": "Invalid cctv_names JSON format"}, status_code=400)
 
-    # Create folders for each CCTV feed
-    create_folder(email, cctv_names)
+    # Validate using PayloadForRegister
+    try:
+        payload = PayloadForRegister(email=email, cctv_names=cctv_names_list)
+    except ValidationError as e:
+        return JSONResponse(content={"error": e.errors()}, status_code=422)
 
-    return JSONResponse(content={"message": "CCTV feeds registered successfully", "email": email, "cctv_feeds": cctv_names})
+    # Save uploaded video file
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
+    return JSONResponse(content={
+        "message": "CCTV feeds and video uploaded successfully",
+        "email": payload.email,
+        "cctv_feeds": payload.cctv_names,
+        "filename": file.filename
+    })
 
 @app.get("/delete_data")
 async def delete_data(email: str):
