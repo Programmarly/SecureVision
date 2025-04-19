@@ -126,7 +126,7 @@ class VideoFolderMonitor(FileSystemEventHandler):
         
         # Send email
         yag.send(
-            to=email+'@mitwpu.edu.in',
+            to=email+'@gmail.com',
             subject=subject,
             contents=html_content
         )

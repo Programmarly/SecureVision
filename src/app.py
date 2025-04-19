@@ -19,7 +19,7 @@ from pydantic import BaseModel, field_validator, ValidationError
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from loader import extract_and_save_frames
-
+from services.live_monitoring import start_capture_in_thread
 
 app = FastAPI()
 
@@ -97,7 +97,31 @@ async def websocket_endpoint(websocket: WebSocket):
         print("WebSocket client disconnected.")
 
 
+@app.post("/get-live-logs")
+async def get_live_logs(
+    email: str = Form(...),
+    ip_url: str = Form(...),
+    cctv_name: str = Form(...)
+):
+    """API endpoint to get live logs."""
+    print(f"Received email: {email}")
+    print(f"Received IP URL: {ip_url}")
+    os.makedirs(BASE_PATH, exist_ok=True)
+    # Extract username from email
+    email = email.split("@")[0]
+    # Create user folder
+    user_folder = os.path.join(BASE_PATH, email)
+    os.makedirs(user_folder, exist_ok=True)
+    # Create subfolder for videos
+    videos_folder = os.path.join(user_folder, "videos")
+    os.makedirs(videos_folder, exist_ok=True)
+    # Create subfolder for the specific CCTV feed
+    cctv_folder = os.path.join(videos_folder, cctv_name.replace(" ", "").lower())
+    os.makedirs(cctv_folder, exist_ok=True)
+    # Start capturing frames from the IP webcam
+    start_capture_in_thread(ip_url, cctv_folder, frame_interval=30, delay=0.1)
 
+    return JSONResponse(content={"message": "Live logs will be sent via WebSocket."})
 
 @app.post("/upload_data")
 async def upload_data(
