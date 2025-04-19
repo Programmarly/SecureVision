@@ -16,6 +16,10 @@ from watchdog.observers import Observer
 from fastapi import WebSocket, WebSocketDisconnect
 import json
 from pydantic import BaseModel, field_validator, ValidationError
+from typing import List
+from fastapi.middleware.cors import CORSMiddleware
+from loader import extract_and_save_frames
+
 
 app = FastAPI()
 
@@ -25,6 +29,13 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 observer = Observer()  # Global observer instance
 websocket_clients = set()  # Track connected WebSocket clients
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust based on your frontend port
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def create_folder(email, cctv_names):
@@ -40,8 +51,40 @@ def create_folder(email, cctv_names):
 
     print(f"Folder structure created for {email}")
 
+# @app.get("/start-loader/{email}")
+# def async start_loader(email: str):
+#     """Starts the loader for a specific user."""
+#     email = email.split("@")[0]
+#     threads = []
+#     for file in files:
+#         filename_wo_ext = os.path.splitext(file.filename)[0]
+#         cctv_name = filename_wo_ext.lower().replace(" ", "_").replace("cctv_", "")
+
+#         input_video_path = os.path.join(UPLOAD_DIR, file.filename)
+#         output_frames_dir = os.path.join(
+#             BASE_PATH,
+#             email.split("@")[0],
+#             "videos",
+#             cctv_name,
+#             "frames"
+#         )
+#         os.makedirs(output_frames_dir, exist_ok=True)
+
+#         thread = threading.Thread(
+#             target=extract_and_save_frames,
+#             args=(input_video_path, output_frames_dir, 20, 0.7)
+#         )
+#         threads.append(thread)
+#         thread.start()
+
+#     for thread in threads:
+#         thread.join()
+
+
 @app.websocket("/ws/logs")
 async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time logs."""
+
     await websocket.accept()
     websocket_clients.add(websocket)
     print("WebSocket client connected.")
@@ -54,35 +97,90 @@ async def websocket_endpoint(websocket: WebSocket):
         print("WebSocket client disconnected.")
 
 
+
+
 @app.post("/upload_data")
 async def upload_data(
     email: str = Form(...),
-    cctv_names: str = Form(...),
-    file: UploadFile = File(...)
+    files: List[UploadFile] = File(...)
 ):
-    # Parse cctv_names JSON string to list
-    try:
-        cctv_names_list = json.loads(cctv_names)
-    except json.JSONDecodeError:
-        return JSONResponse(content={"error": "Invalid cctv_names JSON format"}, status_code=400)
+    print(f"Received email: {email}")
+    print(f"Received files: {[file.filename for file in files]}")
 
-    # Validate using PayloadForRegister
+    # Extract clean cctv names
+    cctv_names_list = []
+    for file in files:
+        filename_wo_ext = os.path.splitext(file.filename)[0]
+        cleaned_name = filename_wo_ext.lower().replace(" ", "_").replace("cctv_", "")
+        cctv_names_list.append(cleaned_name)
+
     try:
         payload = PayloadForRegister(email=email, cctv_names=cctv_names_list)
     except ValidationError as e:
         return JSONResponse(content={"error": e.errors()}, status_code=422)
 
-    # Save uploaded video file
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    saved_files = []
+    
+    # Split email and create path
+    email_parts = email.split("@")[0]
+    upload_dir = os.path.join(UPLOAD_DIR, email_parts)
+    os.makedirs(upload_dir, exist_ok=True)
+
+    for file in files:
+        upload_path = os.path.join(upload_dir, file.filename)
+        with open(upload_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        saved_files.append(file.filename)
+
+    # Create per-user folder structure
+    create_folder_structure(email, cctv_names_list)
+
+    # Begin frame extraction into `data/<user>/videos/<cctv_name>/frames`
+    # threads = []
+    # for file in files:
+    #     filename_wo_ext = os.path.splitext(file.filename)[0]
+    #     cctv_name = filename_wo_ext.lower().replace(" ", "_").replace("cctv_", "")
+
+    #     input_video_path = os.path.join(UPLOAD_DIR, file.filename)
+    #     output_frames_dir = os.path.join(
+    #         BASE_PATH,
+    #         email.split("@")[0],
+    #         "videos",
+    #         cctv_name,
+    #         "frames"
+    #     )
+    #     os.makedirs(output_frames_dir, exist_ok=True)
+
+    #     thread = threading.Thread(
+    #         target=extract_and_save_frames,
+    #         args=(input_video_path, output_frames_dir, 20, 0.7)
+    #     )
+    #     threads.append(thread)
+    #     thread.start()
+
+    # for thread in threads:
+    #     thread.join()
 
     return JSONResponse(content={
-        "message": "CCTV feeds and video uploaded successfully",
+        "message": "Videos uploaded and frames extracted successfully.",
         "email": payload.email,
         "cctv_feeds": payload.cctv_names,
-        "filename": file.filename
+        "filenames": saved_files
     })
+
+
+def create_folder_structure(email: str, cctv_names: List[str]):
+    username = email.split("@")[0]
+    base_path = os.path.join(BASE_PATH, username, "videos")
+
+    for cctv in cctv_names:
+        frames_path = os.path.join(base_path, cctv)
+        os.makedirs(frames_path, exist_ok=True)
+
+    print(f"[INFO] Created folders in {base_path}")
+
 
 @app.get("/delete_data")
 async def delete_data(email: str):
@@ -106,6 +204,8 @@ async def health_check():
 def start_monitoring():
     """Starts the folder monitoring for all existing user folders."""
     print("Starting monitoring")
+    #Create base folder if it doesn't exist
+    os.makedirs(BASE_PATH, exist_ok=True)
     for user_folder in os.listdir(BASE_PATH):
         user_path = os.path.join(BASE_PATH, user_folder, "videos")
         if os.path.isdir(user_path):

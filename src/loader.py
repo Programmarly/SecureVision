@@ -43,29 +43,29 @@ def extract_and_save_frames(video_path, output_folder, frame_interval=30, delay=
 
 # Create threads for each extraction task
 def run_concurrent_extractions():
-    video_path = "arrest.mp4"  # Update with your video path
-    output_folder = "E:\\Capstone\\src\\data\\harshit\\videos\\home"
-    output_folder1 = "E:\\Capstone\\src\\data\\harshit\\videos\\office"
+    video_path = "/Users/harshkhanpara/workspace/capstone/SecureVision/src/uploads/1032211147/Fighting014_x264A.mp4"  # Update with your video path
+    output_folder = "/Users/harshkhanpara/workspace/capstone/SecureVision/src/data/1032211147/videos/fighting014_x264a"
+    # output_folder1 = "E:\\Capstone\\src\\data\\harshit\\videos\\office"
     
     # Create thread for first extraction
     thread1 = threading.Thread(
         target=extract_and_save_frames,
-        args=(video_path, output_folder, 20, 0.7)
+        args=(video_path, output_folder, 30, 0.7)
     )
     
     # Create thread for second extraction
-    thread2 = threading.Thread(
-        target=extract_and_save_frames,
-        args=(video_path, output_folder1, 20, 0.7)
-    )
+    # thread2 = threading.Thread(
+    #     target=extract_and_save_frames,
+    #     args=(video_path, output_folder1, 20, 0.7)
+    # )
     
     # Start both threads
     thread1.start()
-    thread2.start()
+    # thread2.start()
     
     # Wait for both threads to complete
     thread1.join()
-    thread2.join()
+    # thread2.join()
     
     print("All extractions completed.")
 
