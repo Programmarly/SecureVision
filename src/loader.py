@@ -2,6 +2,7 @@ import cv2
 import os
 import time
 import threading
+from services.queue_worker import frame_queue
 
 def extract_and_save_frames(video_path, output_folder, frame_interval=30, delay=0.1):
     """
@@ -30,7 +31,9 @@ def extract_and_save_frames(video_path, output_folder, frame_interval=30, delay=
 
         if frame_count % frame_interval == 0:  # Save every `frame_interval` frames
             frame_filename = os.path.join(output_folder, f"frame_{saved_frame_count:05d}.jpg")
+
             cv2.imwrite(frame_filename, frame)  # Save frame
+            frame_queue.put(frame_filename, timeout=2)
             print(f"Saved: {frame_filename}")
 
             saved_frame_count += 1
