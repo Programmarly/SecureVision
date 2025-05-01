@@ -2,6 +2,7 @@ import cv2
 import os
 import time
 import threading
+from services.queue_worker import frame_queue
 
 def capture_frames_from_ip_webcam(ip_url, output_folder, frame_interval=30, delay=0.1):
     """
@@ -33,6 +34,7 @@ def capture_frames_from_ip_webcam(ip_url, output_folder, frame_interval=30, dela
         if frame_count % frame_interval == 0:
             frame_filename = os.path.join(output_folder, f"frame_{saved_frame_count:05d}.jpg")
             cv2.imwrite(frame_filename, frame)
+            frame_queue.put(frame_filename,timeout=2)
             print(f"Saved: {frame_filename}")
             saved_frame_count += 1
             time.sleep(delay)

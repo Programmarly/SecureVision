@@ -20,6 +20,12 @@ from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from loader import extract_and_save_frames
 from services.live_monitoring import start_capture_in_thread
+from services.folder_monitor import VideoFolderMonitor
+from services.queue_worker import start_frame_consumers
+import asyncio
+from services.queue_worker import frame_queue
+
+
 
 app = FastAPI()
 
@@ -100,28 +106,30 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/get-live-logs")
 async def get_live_logs(
     email: str = Form(...),
-    ip_url: str = Form(...),
-    cctv_name: str = Form(...)
+    ip_urls: List[str] = Form(...),
+    cctv_names: List[str] = Form(...)
 ):
-    """API endpoint to get live logs."""
+    """API endpoint to get live logs for multiple IPs."""
     print(f"Received email: {email}")
-    print(f"Received IP URL: {ip_url}")
+    print(f"Received IP URLs: {ip_urls}")
+    print(f"Received CCTV Names: {cctv_names}")
+
+    if len(ip_urls) != len(cctv_names):
+        return JSONResponse(status_code=400, content={"error": "Mismatched number of IPs and CCTV names"})
+
     os.makedirs(BASE_PATH, exist_ok=True)
-    # Extract username from email
-    email = email.split("@")[0]
-    # Create user folder
-    user_folder = os.path.join(BASE_PATH, email)
-    os.makedirs(user_folder, exist_ok=True)
-    # Create subfolder for videos
+    username = email.split("@")[0]
+    user_folder = os.path.join(BASE_PATH, username)
     videos_folder = os.path.join(user_folder, "videos")
     os.makedirs(videos_folder, exist_ok=True)
-    # Create subfolder for the specific CCTV feed
-    cctv_folder = os.path.join(videos_folder, cctv_name.replace(" ", "").lower())
-    os.makedirs(cctv_folder, exist_ok=True)
-    # Start capturing frames from the IP webcam
-    start_capture_in_thread(ip_url, cctv_folder, frame_interval=30, delay=0.1)
 
-    return JSONResponse(content={"message": "Live logs will be sent via WebSocket."})
+    for ip, cctv_name in zip(ip_urls, cctv_names):
+        safe_cctv_name = cctv_name.replace(" ", "").lower()
+        cctv_folder = os.path.join(videos_folder, safe_cctv_name)
+        os.makedirs(cctv_folder, exist_ok=True)
+        start_capture_in_thread(ip, cctv_folder, frame_interval=30, delay=0.1)
+
+    return JSONResponse(content={"message": "Live logs for all cameras started."})
 
 @app.post("/upload_data")
 async def upload_data(
@@ -271,7 +279,22 @@ def stop_monitoring():
     observer.stop()
     observer.join()
 
+def initialize_monitor():
+    """
+    Initializes folder monitor and starts frame consumers.
+    """
+    video_monitor = VideoFolderMonitor(BASE_PATH, lambda msg: asyncio.run(websocket_broadcast(msg)))
+    start_frame_consumers(video_monitor, num_consumers=4)
+    print("[RunMonitor]  Frame consumers started.")
+
+
+def stop_consumers():
+    for _ in range(4):  # 4 threads
+        frame_queue.put(None)
+
 
 # Start monitoring when the script runs
-run_monitoring()
+#run_monitoring()
+initialize_monitor()  # Initialize the video folder monitor
 atexit.register(stop_monitoring)  # Cleanup observer on shutdown
+atexit.register(stop_consumers)  # Cleanup consumers on shutdown

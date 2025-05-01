@@ -132,6 +132,7 @@ class VideoFolderMonitor(FileSystemEventHandler):
         )
 
     def process_frame(self, frame_path):
+        print(f"Processing frame: {frame_path}")
         folder_name = os.path.basename(os.path.dirname(frame_path))
         email = os.path.basename(os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(frame_path)))))
     
@@ -168,9 +169,9 @@ class VideoFolderMonitor(FileSystemEventHandler):
             severity_score, severity_level, new_keypoints = compute_severity(prev_frame, frame, prev_keypoints)
 
             # Only log if violence is detected or severity is high/critical
-            if violence_label != "Normal Videos" or severity_level in ["High", "Critical"]:
+            if True:
                 log_time = time.strftime("%Y-%m-%d %H:%M:%S")
-                # print(f"[{log_time}] CCTV: {folder_name} | Violence: {violence_label} ({violence_confidence:.2f}) | Severity: {severity_score:.2f} ({severity_level})")
+                print(f"[{log_time}] CCTV: {folder_name} | Violence: {violence_label} ({violence_confidence:.2f}) | Severity: {severity_score:.2f} ({severity_level})")
                 log_message = f"[{log_time}] Email: {email}@gmail.com | CCTV: {folder_name} | Violence: {violence_label} ({violence_confidence:.2f}) | Severity: {severity_score:.2f} ({severity_level})"
                 print(log_message)
                 if(violence_label != "Normal Videos" and severity_level in ["High", "Critical","Medium"]):
